@@ -23,6 +23,7 @@
 #include <boost/property_tree/xml_parser.hpp>
 #include "unitcell.hpp"
 
+using namespace std;
 namespace lattice {
 
 using boost::property_tree::ptree;
@@ -109,6 +110,52 @@ inline ptree& operator>>(ptree& pt, unitcell& cell) {
       target_offset = target_offset - source_offset;
       if (auto str = e.second.get_optional<std::string>("<xmlattr>.type")) tp = stoi(str.get());
       cell.add_bond(source - 1, target - 1, target_offset, tp);
+    }
+
+    if (e.first == "LOOP") {
+      bool found_source = false;
+      size_t target_cnt = 0;
+      std::size_t source = 1;
+      std::vector<std::size_t> target_v; // offset one
+      offset_t source_offset = offset_t::Zero(dim);
+      std::vector<offset_t> target_offset_v;
+      int tp = 1;
+      for (auto& st : e.second) {
+        if (st.first == "SOURCE") {
+          if (found_source) throw std::invalid_argument("duplicated <SOURCE> tag");
+          if (auto str = st.second.get_optional<std::string>("<xmlattr>.vertex"))
+            source = stoi(str.get());
+          if (auto str = st.second.get_optional<std::string>("<xmlattr>.offset")) {
+            std::istringstream is(str.get());
+            std::string sin;
+            for (std::size_t m = 0; m < dim; ++m) {
+              is >> sin;
+              source_offset(m) = stod(sin);
+            }
+          }
+          found_source = true;
+        } else if (st.first == "TARGET") {
+          if (!found_source) throw std::invalid_argument("define <SOURCE> before <TARGET> tag");
+          offset_t target_offset = offset_t::Zero(dim);
+          std::size_t target = 1;
+          if (auto str = st.second.get_optional<std::string>("<xmlattr>.vertex"))
+            target = stoi(str.get());
+          if (auto str = st.second.get_optional<std::string>("<xmlattr>.offset")) {
+            std::istringstream is(str.get());
+            std::string sin;
+            for (std::size_t m = 0; m < dim; ++m) {
+              is >> sin;
+              target_offset(m) = stod(sin);
+            }
+          }
+          target_offset_v.push_back(target_offset - source_offset);
+          target_v.push_back(target - 1);
+          target_cnt++;
+        }
+      }
+      if (target_cnt <= 1) throw std::invalid_argument("# of target must be larger than 1 for LOOP");
+      if (auto str = e.second.get_optional<std::string>("<xmlattr>.type")) tp = stoi(str.get());
+      cell.add_multi(source - 1, target_v, target_offset_v, tp); //already subtracted 1 from target_v
     }
   }
   return pt;
