@@ -45,8 +45,8 @@ public:
 
   struct multi_t {
     multi_t() {}
-    multi_t(std::set<size_t> t_v, int tp) :
-      target_v(t_v.begin(), t_v.end()), type(tp){}
+    multi_t(std::vector<size_t> t_v, int tp) :
+      target_v(t_v), type(tp){}
     size_t num_act() const {return target_v.size();}
     std::vector<size_t>  target_v;
     int type;
@@ -120,7 +120,7 @@ public:
         std::size_t target_cell;
         offset_t cross;
         bool valid = true;
-        std::set<std::size_t> target_v;
+        std::vector<std::size_t> target_v = {s};
         // loop for i < num_act - 1
         for (int i=0; i<cell.multi(u).num_act()-1; i++){
           auto offset = cell.multi(u).target_offset_v[i];
@@ -128,10 +128,10 @@ public:
           std::tie(target_cell, cross) = super.add_offset(c, offset);
           for (std::size_t m = 0; m < dim_; ++m) if (boundary[m] == boundary_t::open && cross(m) != 0) valid = false;
           std::size_t t = target_cell * cell.num_sites() + target;
-          if (s != t) target_v.insert(t);
+          if (s != t) target_v.push_back(t);
         }
         // add multi if valid
-        if (valid) add_multi(s, target_v, cell.multi(u).type);
+        if (valid) add_multi(target_v, cell.multi(u).type);
       }
     }
   }
@@ -159,17 +159,17 @@ public:
     return b;
   }
 
-  std::size_t add_multi(std::size_t s, std::set<std::size_t> t_v, int tp) {
-
-    for (auto t : t_v)
+  std::size_t add_multi(std::vector<std::size_t> t_v, int tp) {
+    std::size_t s = t_v[0];
+    for (int i=1; i<t_v.size(); i++)
     {
+      auto t = t_v[i];
       if (s >= sites_.size() || t >= sites_.size())
         throw std::invalid_argument("site index out of range");
       if (s == t)
         throw std::invalid_argument("self loop is not allowed");
     }
     std::size_t b = bonds_.size() + multis_.size();
-    t_v.insert(s);
     multis_.push_back(multi_t(t_v, tp));
     return b;
   }
