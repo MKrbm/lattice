@@ -42,6 +42,15 @@ public:
     std::size_t source, target;
     int type;
   };
+
+  struct multi_t {
+    multi_t() {}
+    multi_t(std::vector<size_t> t_v, int tp) :
+      target_v(t_v), type(tp){}
+    size_t num_act() const {return target_v.size();}
+    std::vector<size_t>  target_v;
+    int type;
+  };
   
   graph() : dim_(0) {}
   explicit graph(std::size_t dim) : dim_(dim) {}
@@ -85,6 +94,8 @@ public:
         add_site(pos, cell.site(t).type);
       }
     }
+
+    //* add bonds
     for (std::size_t c = 0; c < super.num_cells(); ++c) {
       for (std::size_t u = 0; u < cell.num_bonds(); ++u) {
         std::size_t s = c * cell.num_sites() + cell.bond(u).source;
@@ -98,6 +109,29 @@ public:
           std::size_t t = target_cell * cell.num_sites() + cell.bond(u).target;
           if (s != t) add_bond(s, t, cell.bond(u).type);
         }
+      }
+    }
+
+
+    //* add multis
+    for (std::size_t c = 0; c < super.num_cells(); ++c) {
+      for (std::size_t u = 0; u < cell.num_multis(); ++u) {
+        std::size_t s = c * cell.num_sites() + cell.multi(u).source;
+        std::size_t target_cell;
+        offset_t cross;
+        bool valid = true;
+        std::vector<std::size_t> target_v = {s};
+        // loop for i < num_act - 1
+        for (int i=0; i<cell.multi(u).num_act()-1; i++){
+          auto offset = cell.multi(u).target_offset_v[i];
+          auto target = cell.multi(u).target_v[i];
+          std::tie(target_cell, cross) = super.add_offset(c, offset);
+          for (std::size_t m = 0; m < dim_; ++m) if (boundary[m] == boundary_t::open && cross(m) != 0) valid = false;
+          std::size_t t = target_cell * cell.num_sites() + target;
+          if (s != t) target_v.push_back(t);
+        }
+        // add multi if valid
+        if (valid) add_multi(target_v, cell.multi(u).type);
       }
     }
   }
@@ -116,12 +150,27 @@ public:
       throw std::invalid_argument("site index out of range");
     if (s == t)
       throw std::invalid_argument("self loop is not allowed");
-    std::size_t b = bonds_.size();
+    std::size_t b = bonds_.size() + multis_.size();
     bonds_.push_back(bond_t(s, t, tp));
     sites_[s].neighbors.push_back(t);
     sites_[s].neighbor_bonds.push_back(b);
     sites_[t].neighbors.push_back(s);
     sites_[t].neighbor_bonds.push_back(b);
+    return b;
+  }
+
+  std::size_t add_multi(std::vector<std::size_t> t_v, int tp) {
+    std::size_t s = t_v[0];
+    for (int i=1; i<t_v.size(); i++)
+    {
+      auto t = t_v[i];
+      if (s >= sites_.size() || t >= sites_.size())
+        throw std::invalid_argument("site index out of range");
+      if (s == t)
+        throw std::invalid_argument("self loop is not allowed");
+    }
+    std::size_t b = bonds_.size() + multis_.size();
+    multis_.push_back(multi_t(t_v, tp));
     return b;
   }
       
@@ -141,7 +190,12 @@ public:
   }
 
   std::size_t num_bonds() const { return bonds_.size(); }
+  std::size_t num_multis() const { return multis_.size(); }
+
   int bond_type(std::size_t b) const { return bonds_[b].type; }
+  int multi_type(std::size_t b) const { return multis_[b].type; }
+
+  std::vector<std::size_t> multi(std::size_t b) const { return multis_[b].target_v; }
   std::size_t source(std::size_t b) const { return bonds_[b].source; }
   std::size_t target(std::size_t b) const { return bonds_[b].target; }
   std::pair<std::size_t, std::size_t> edge_sites(std::size_t b) const {
@@ -165,7 +219,8 @@ public:
   void print(std::ostream& os = std::cout) const {
     os << "dimension: " << dimension() << std::endl
        << "number of sites: " << num_sites() << std::endl
-       << "number of bonds: " << num_bonds() << std::endl;
+       << "number of bonds: " << num_bonds() << std::endl
+       << "number of multis: " << num_multis() << std::endl;
     for (std::size_t s = 0; s < num_sites(); ++s) {
       os << "site: " << s << " type: " << site_type(s) << ' '
          << "( " << coordinate(s).transpose() << " ) neighbors[ ";
@@ -183,6 +238,8 @@ private:
   std::vector<site_t> sites_;
   std::vector<coordinate_t> coordinates_;
   std::vector<bond_t> bonds_;
+  std::vector<multi_t> multis_;
+
 };
 
 } // end namespace lattice
